@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="icon" href="a1.png" type="image/x-icon">
+  <title>Attendance System</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+ body {
+  font-family: 'Roboto', sans-serif;
+  background: linear-gradient(135deg, #6C63FF, #00C1FE);
+  color: #333;
+  text-align: center;
+  margin: 0;
+  padding: 20px 10px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+    h1 {
+      color: #fff;
+      margin-bottom: 20px;
+      font-size: 2.5em;
+      text-shadow: 2px 2px 6px rgba(0,0,0,0.3);
+    }
+
+    .attendance-container {
+      background: #fff;
+      padding: 30px 40px;
+      border-radius: 15px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+      max-width: 400px;
+      width: 100%;
+      position: relative;
+    }
+
+    .video-box {
+      width: 100%;
+      height: 300px;
+      border: 3px solid #6C63FF;
+      border-radius: 15px;
+      overflow: hidden;
+      margin-bottom: 20px;
+      position: relative;
+      background: #000;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .loader-container {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      z-index: 10;
+    }
+
+    .loader-dots {
+      display: flex;
+      justify-content: center;
+      gap: 5px;
+    }
+
+    .loader-dots div {
+      width: 12px;
+      height: 12px;
+      background: #6C63FF;
+      border-radius: 50%;
+      animation: bounce 0.6s infinite alternate;
+    }
+
+    .loader-dots div:nth-child(2) { animation-delay: 0.2s; }
+    .loader-dots div:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      to { transform: translateY(-15px); }
+    }
+
+    .loader-text {
+      color: #fff;
+      margin-top: 10px;
+      font-weight: bold;
+      font-size: 1em;
+    }
+
+    button, label {
+      background: #6C63FF;
+      color: #fff;
+      padding: 12px 20px;
+      margin: 10px 0;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1em;
+      transition: background 0.3s;
+      display: inline-block;
+    }
+
+    button:hover, label:hover {
+      background: #574ed2;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .popup {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #fff;
+      padding: 25px 35px;
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+      display: none;
+      z-index: 1000;
+      text-align: center;
+      animation: fadeIn 0.3s;
+    }
+
+    .popup.show { display: block; }
+
+    .popup button { background: #00C851; margin-top: 15px; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translate(-50%, -60%); }
+      to { opacity: 1; transform: translate(-50%, -50%); }
+    }
+
+  </style>
+</head>
+<body>
+  <h1>Attendance System🧑‍💻📸</h1>
+
+ <div class="attendance-container">
+  <div class="video-box">
+    <video id="video" autoplay muted playsinline></video>
+
+    <div id="loader" class="loader-container">
+      <div class="loader-dots">
+        <div></div>
+        <div></div>
+        <div></div>
+      </div>
+      <div class="loader-text">Marking Attendance...</div>
+    </div>
+  </div>
+
+  <!-- Attendance Buttons -->
+  <button onclick="checkAttendance('camera')">Mark Attendance (Camera)</button>
+
+  <!-- OR separator -->
+  <div style="margin: 15px 0; font-weight: bold; color: #6C63FF;">OR</div>
+
+  <label for="uploadInput">Upload Photo from Gallery</label>
+  <input type="file" id="uploadInput" accept="image/*" onchange="checkAttendance('upload')">
+
+  <!-- Register Button -->
+  <button style="background: #00C851; margin-top: 20px;" onclick="window.location.href='../index.html'">
+    Register as New Student
+  </button>
+</div>
+
+
+  <div id="popup" class="popup">
+    <div id="popupMessage"></div>
+    <button onclick="closePopup()">OK</button>
+  </div>
+
+  <script>
+    const supabaseUrl = "https://punnqvevnkhsjoytugie.supabase.co";
+    const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1bm5xdmV2bmtoc2pveXR1Z2llIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY5OTUwOTQsImV4cCI6MjA3MjU3MTA5NH0.i-cH0GYuaFlpkxs3hGhdPbitNyYkj_4WnklxoaoLBgM";
+    const client = supabase.createClient(supabaseUrl, supabaseKey);
+
+
+    async function loadModels() {
+      await faceapi.nets.ssdMobilenetv1.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+      await faceapi.nets.faceLandmark68Net.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+      await faceapi.nets.faceRecognitionNet.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+    }
+
+    async function startCamera() {
+      const video = document.getElementById('video');
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      video.play();
+    }
+
+    async function fetchAllStudents() {
+      const { data, error } = await client.from('students').select('*');
+      if (error) { console.error('Supabase error:', error.message); return []; }
+      return data || [];
+    }
+
+    async function compareWithStudent(liveImage, student) {
+      const liveDesc = await faceapi.detectSingleFace(liveImage).withFaceLandmarks().withFaceDescriptor();
+      if (!liveDesc) return false;
+
+      const storedImg = await faceapi.fetchImage(student.image_url);
+      const storedDesc = await faceapi.detectSingleFace(storedImg).withFaceLandmarks().withFaceDescriptor();
+      if (!storedDesc) return false;
+
+      const distance = faceapi.euclideanDistance(liveDesc.descriptor, storedDesc.descriptor);
+      return distance < 0.6;
+    }
+
+    async function checkAttendance(type) {
+      showLoader(true);
+      const students = await fetchAllStudents();
+      if (students.length === 0) {
+        showLoader(false);
+        return showPopup("No students registered yet!");
+      }
+
+      let liveImage;
+      if (type === 'camera') liveImage = document.getElementById('video');
+      else if (type === 'upload') {
+        const fileInput = document.getElementById('uploadInput');
+        if (!fileInput.files[0]) {
+          showLoader(false);
+          return showPopup("Please select an image.");
+        }
+        liveImage = await faceapi.bufferToImage(fileInput.files[0]);
+      }
+
+      let matched = false;
+      for (const student of students) {
+        const isMatch = await compareWithStudent(liveImage, student);
+        if (isMatch) {
+          showLoader(false);
+          showPopup(`✅ Attendance marked for ${student.name} (${student.student_id})`);
+          matched = true;
+          break;
+        }
+      }
+
+      if (!matched) {
+        showLoader(false);
+        showPopup("❌ Face not recognized. Please register first.");
+      }
+    }
+
+    function showLoader(show) {
+      document.getElementById('loader').style.display = show ? 'flex' : 'none';
+    }
+
+    function showPopup(message) {
+      document.getElementById('popupMessage').innerText = message;
+      document.getElementById('popup').classList.add('show');
+    }
+
+    function closePopup() {
+      document.getElementById('popup').classList.remove('show');
+    }
+
+    async function init() {
+      await loadModels();
+      await startCamera();
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
+
+
+<!-- directed by -->
+
+<!--sundar reddy-->
+
+<!-- 9502877675-->
+
+<!-- dont copy this codes this conatians keys -->s
